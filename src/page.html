@@ -177,7 +177,8 @@ dialog h3{margin:0;font-size:18px}
   <section class="view" id="v-settings" hidden>
     <div class="card">
       <h2>מכסה יומית</h2>
-      <label class="hint" for="quota">שעות ליום עבודה<input type="time" id="quota"></label>
+      <label class="hint" for="quota">ימים א׳, ב׳, ד׳, ה׳<input type="time" id="quota"></label>
+      <label class="hint" for="quotaTue">יום ג׳<input type="time" id="quotaTue"></label>
     </div>
     <div class="card">
       <h2>הזנה אוטומטית</h2>
@@ -221,7 +222,7 @@ dialog h3{margin:0;font-size:18px}
         <button class="btn" id="wipeNo" type="button">ביטול</button>
       </div>
     </div>
-    <p class="hint" id="ver">גרסה 2.0 · עדי 1</p>
+    <p class="hint" id="ver">גרסה 2.0 · עדי 2</p>
   </section>
 
   <dialog id="edit">
@@ -274,13 +275,17 @@ const MONTHS=['ינואר','פברואר','מרץ','אפריל','מאי','יונ
 const DAYS=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
 const DAYS_FULL=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 const $=id=>document.getElementById(id);
-let S={days:{},quota:480};
+// Adi's rule: 8:36 on every workday except Tuesday, which is 7:36
+const Q_REG=516,Q_TUE=456;
+let S={days:{},quota:Q_REG,quotaTue:Q_TUE};
+const qf=dow=>dow===2?S.quotaTue:S.quota;
 let demo=false;
 
 function load(){
   let raw=null;
   try{raw=localStorage.getItem(KEY)}catch(e){}
-  if(raw){try{S=Object.assign(S,JSON.parse(raw))}catch(e){}}
+  // data saved before the Tuesday rule existed still carries the old 8:00 quota
+  if(raw){try{const o=JSON.parse(raw);if(!o.quotaTue)o.quota=Q_REG;S=Object.assign(S,o)}catch(e){}}
   else if(window.__SEED__){S=Object.assign(S,JSON.parse(JSON.stringify(window.__SEED__)));demo=true}
   if(window.__SEED__)demo=true;
   migrate();
@@ -331,12 +336,12 @@ function holiday(dt){
   }}catch(e){}
   return holCache[k]=h;
 }
-function diff(r){const w=worked(r);return w==null?0:w-S.quota}
+function diff(r,dow){const w=worked(r);return w==null?0:w-qf(dow)}
 
 function monthData(y,m){
   const n=new Date(y,m+1,0).getDate(),rows=[];let bal=0,tot=0,cnt=0;
   for(let d=1;d<=n;d++){
-    const dt=new Date(y,m,d),k=iso(dt),r=S.days[k]||{},w=worked(r),df=diff(r);
+    const dt=new Date(y,m,d),k=iso(dt),r=S.days[k]||{},w=worked(r),df=diff(r,dt.getDay());
     if(w!=null){cnt++;tot+=w;bal+=df}
     rows.push({d,k,dow:dt.getDay(),r,w,df,cum:bal,hol:holiday(dt)});
   }
@@ -413,14 +418,14 @@ function renderToday(force){
     let closed=0;segs(r).forEach(x=>{if(x[0]&&x[1])closed+=toMin(x[1])-toMin(x[0])});
     const i=toMin(open[0]),sofar=closed+cur-i;
     if(cur>=i)line('עבדת עד עכשיו',fmtDur(sofar));
-    const full=i+S.quota-closed;
+    const full=i+qf(now.getDay())-closed;
     line('מכסה יומית מתמלאת ב',full<1440?toHM(full):'—');
     const zero=full-md.bal;
     if(md.bal!==0&&zero>i&&zero<1440)line('יתרת החודש מתאפסת ביציאה ב',toHM(zero));
-    if(cur>=i){const b=md.bal+sofar-S.quota;line('אם תצא עכשיו, יתרת החודש',fmtBal(b),cls(b))}
+    if(cur>=i){const b=md.bal+sofar-qf(now.getDay());line('אם תצא עכשיו, יתרת החודש',fmtBal(b),cls(b))}
     if(cur-i>=600){err.textContent='עברו יותר מ-10 שעות מאז הכניסה. שכחת להזין יציאה?';err.hidden=false}
   }else if(worked(r)!=null){
-    const w=worked(r);line('עבדת היום',fmtDur(w));line('יתרת היום',fmtBal(w-S.quota),cls(w-S.quota));
+    const w=worked(r);line('עבדת היום',fmtDur(w));const q=qf(now.getDay());line('יתרת היום',fmtBal(w-q),cls(w-q));
   }else{
     f.push('<div><span>עוד לא הוזנה כניסה להיום.</span></div>');
   }
@@ -434,7 +439,7 @@ function renderToday(force){
   for(let d=now.getDate()+(done?1:0);d<=md.n;d++){const dt=new Date(now.getFullYear(),now.getMonth(),d);if(isWorkday(dt.getDay())&&!isDayOff(holiday(dt)))rem++}
   const g=[];
   g.push('<div><span>ימי עבודה שנותרו (א׳–ה׳, בלי חגים)</span><b class="num">'+rem+'</b></div>');
-  if(md.bal<0&&rem>0){const per=Math.ceil(-md.bal/rem);g.push('<div><span>כדי לסגור את החוסר, בכל יום שנותר</span><b class="num">'+fmtDur(S.quota+per)+'</b></div>')}
+  if(md.bal<0&&rem>0){const per=Math.ceil(-md.bal/rem);g.push('<div><span>כדי לסגור את החוסר, תוספת בכל יום שנותר</span><b class="num">'+fmtDur(per)+'</b></div>')}
   else if(md.bal<0)g.push('<div><span>חוסר שיירד מהחופשה</span><b class="num neg">'+fmtDur(md.bal)+'</b></div>');
   else if(md.bal>0&&rem>0){const per=Math.floor(md.bal/rem);g.push('<div><span>אפשר לקצר בכל יום שנותר עד</span><b class="num">'+fmtDur(per)+'</b></div>')}
   $('forecast').innerHTML=g.join('');
@@ -521,7 +526,7 @@ function download(name,text,type){
 function csv(ym){
   const rows=[['תאריך','יום','כניסה','יציאה','שעות עבודה','יתרה בדקות','הערות','כל ההחתמות']];
   Object.keys(S.days).filter(k=>!ym||k.slice(0,7)===ym).sort().forEach(k=>{const r=S.days[k],p=k.split('-'),dt=new Date(+p[0],+p[1]-1,+p[2]),w=worked(r);
-    rows.push([p[2]+'/'+p[1]+'/'+p[0],DAYS[dt.getDay()],firstIn(r),lastOut(r),w!=null?fmtDur(w):'',w!=null?w-S.quota:0,(r.note||'').replace(/"/g,'""'),segs(r).map(x=>x[0]+'-'+x[1]).join(' ; ')])});
+    rows.push([p[2]+'/'+p[1]+'/'+p[0],DAYS[dt.getDay()],firstIn(r),lastOut(r),w!=null?fmtDur(w):'',w!=null?w-qf(dt.getDay()):0,(r.note||'').replace(/"/g,'""'),segs(r).map(x=>x[0]+'-'+x[1]).join(' ; ')])});
   return '﻿'+rows.map(r=>r.map(c=>'"'+c+'"').join(',')).join('\r\n');
 }
 /* ---------- automatic upload to the user's own Google Drive (through their Apps Script address) ---------- */
@@ -530,7 +535,7 @@ const SKEY='hours-adi-sync-v1';
 let Y={url:'',hash:'',last:0,err:''},syncTimer=null,syncBusy=false;
 try{Y=Object.assign(Y,JSON.parse(localStorage.getItem(SKEY)||'{}'))}catch(e){}
 const saveSync=()=>{try{localStorage.setItem(SKEY,JSON.stringify(Y))}catch(e){}};
-function dataHash(){const t=JSON.stringify([S.days,S.quota]);let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;return t.length+':'+h}
+function dataHash(){const t=JSON.stringify([S.days,S.quota,S.quotaTue]);let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;return t.length+':'+h}
 function syncFiles(){
   const now=new Date(),prev=new Date(now.getFullYear(),now.getMonth()-1,1),ym=d=>d.getFullYear()+'-'+pad(d.getMonth()+1);
   const files=[{name:'hours.csv',content:csv()},{name:'hours-backup.json',content:JSON.stringify(S)},{name:'hours-'+ym(now)+'.csv',content:csv(ym(now))}];
@@ -566,7 +571,7 @@ function renderSync(){
 
 function restore(text){
   try{const o=JSON.parse(text);if(!o||typeof o.days!=='object')throw 0;
-    S={days:o.days,quota:+o.quota||480,lastBackup:o.lastBackup,autoIn:o.autoIn,autoOut:o.autoOut,linkMode:o.linkMode};migrate();save();demo=false;renderAll();toast('הגיבוי שוחזר')}
+    S={days:o.days,quota:+o.quota||Q_REG,quotaTue:+o.quotaTue||Q_TUE,lastBackup:o.lastBackup,autoIn:o.autoIn,autoOut:o.autoOut,linkMode:o.linkMode};migrate();save();demo=false;renderAll();toast('הגיבוי שוחזר')}
   catch(e){toast('הטקסט אינו גיבוי תקין')}
 }
 
@@ -606,6 +611,7 @@ async function readShot(file){
 /* ---------- wiring ---------- */
 function renderAll(force){$('demoBar').hidden=!demo;renderToday(force);renderMonth();renderStats();if($('edit').open)renderEdit(force);
   if(document.activeElement!==$('quota'))$('quota').value=toHM(S.quota);
+  if(document.activeElement!==$('quotaTue'))$('quotaTue').value=toHM(S.quotaTue);
   renderSync();
   $('autoIn').checked=S.autoIn!==false;$('autoOut').checked=S.autoOut!==false;
   $('lastBackup').textContent=S.lastBackup?'גיבוי אחרון נשלח ב-'+S.lastBackup.split('-').reverse().join('.'):'עדיין לא נשלח גיבוי.'}
@@ -638,6 +644,7 @@ function start(){
   $('edit').addEventListener('close',()=>{if(editKey)extra[editKey]=false;renderAll(true)});
   $('hist').onclick=e=>{const b=e.target.closest('button');if(!b)return;view={y:+b.dataset.ym.slice(0,4),m:+b.dataset.ym.slice(5)-1};renderMonth();renderStats();window.scrollTo(0,0)};
   $('quota').onchange=e=>{const v=toMin(e.target.value);if(v>0){S.quota=v;save();renderAll()}};
+  $('quotaTue').onchange=e=>{const v=toMin(e.target.value);if(v>0){S.quotaTue=v;save();renderAll()}};
   $('syncSave').onclick=()=>{const u=$('syncUrl').value.trim();
     if(!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(u)){toast('הכתובת צריכה להתחיל ב-https://script.google.com/macros/s/ ולהסתיים ב-/exec');return}
     Y.url=u;Y.err='';saveSync();syncNow(true).then(()=>toast(Y.err?'ההעלאה נכשלה':'הועלה ל-Drive'))};
@@ -657,7 +664,7 @@ function start(){
   $('impFile').onchange=e=>{const f=e.target.files[0];if(f)f.text().then(restore);e.target.value=''};
   $('wipe').onclick=()=>$('wipeConfirm').hidden=false;
   $('wipeNo').onclick=()=>$('wipeConfirm').hidden=true;
-  $('wipeYes').onclick=()=>{S={days:{},quota:S.quota};save();$('wipeConfirm').hidden=true;renderAll();toast('הנתונים נמחקו')};
+  $('wipeYes').onclick=()=>{S={days:{},quota:S.quota,quotaTue:S.quotaTue};save();$('wipeConfirm').hidden=true;renderAll();toast('הנתונים נמחקו')};
   $('shotBtn').onclick=()=>$('shotFile').click();
   $('shotFile').onchange=e=>{const f=e.target.files[0];if(f)readShot(f);e.target.value=''};
   $('ocrChips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;
