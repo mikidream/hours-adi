@@ -186,7 +186,7 @@ dialog h3{margin:0;font-size:18px}
       <label class="check" for="autoOut"><input type="checkbox" id="autoOut">יציאה נרשמת לבד בפתיחה בין 12:01 ל-20:00</label>
       <p class="hint" style="margin:0">רק כשיש כניסה פתוחה להיום. אם לחצת ביטול, היציאה לא תירשם שוב לבד במשך שעה.</p>
     </div>
-    <div class="card">
+    <div class="card" id="driveCard" hidden>
       <h2>גיבוי אוטומטי ל-Google Drive</h2>
       <p class="hint" style="margin:0">אחרי כל שינוי, קובץ האקסל וקובץ הגיבוי עולים לבד לתיקייה hours-backup ב-Drive שלך.</p>
       <label class="hint" for="syncUrl">כתובת החיבור (מתחילה ב-https://script.google.com)<input type="text" id="syncUrl" dir="ltr" inputmode="url" autocomplete="off"></label>
@@ -221,7 +221,7 @@ dialog h3{margin:0;font-size:18px}
         <button class="btn" id="wipeNo" type="button">ביטול</button>
       </div>
     </div>
-    <p class="hint" id="ver">גרסה 2.0</p>
+    <p class="hint" id="ver">גרסה 2.0 · עדי 1</p>
   </section>
 
   <dialog id="edit">
@@ -537,8 +537,12 @@ function syncFiles(){
   if(Object.keys(S.days).some(k=>k.slice(0,7)===ym(prev)))files.push({name:'hours-'+ym(prev)+'.csv',content:csv(ym(prev))});
   return files;
 }
+// Drive backup is switched off in this copy for now: set DRIVE=true to show the card and upload again
+const DRIVE=false;
+document.getElementById('driveCard').hidden=!DRIVE;
 // uploads only when the data differs from what was last uploaded
 function syncNow(force,leaving){
+  if(!DRIVE)return Promise.resolve();
   if(!Y.url||demo||syncBusy)return Promise.resolve();
   const h=dataHash();if(!force&&h===Y.hash)return Promise.resolve();
   if(navigator.onLine===false){Y.err='אין אינטרנט, יעלה בפתיחה הבאה';saveSync();renderSync();return Promise.resolve()}
